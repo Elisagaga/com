@@ -38,16 +38,17 @@ input,select{font:400 1rem Barlow,sans-serif;padding:.4rem .5rem;border:2px soli
 pre{background:var(--code);color:var(--codeink);padding:1rem;overflow-x:auto;max-height:260px;font:.8rem/1.5 ui-monospace,Menlo,Consolas,monospace;margin:.5rem 0 0}
 .note{color:var(--muted);max-width:70ch}
 dialog{border:2px solid var(--ink);background:var(--card);color:var(--ink);padding:1.2rem;width:min(92vw,460px)}dialog::backdrop{background:#0008}.fields{display:grid;gap:.7rem;margin:.8rem 0}.fields input,.fields select{width:100%}
+#actorbar{background:var(--card);border-bottom:2px solid var(--ink);padding:.6rem 1.2rem;display:flex;flex-wrap:wrap;gap:.8rem;align-items:center}#actorbar select{min-width:260px}#actorbar.need select{border-color:var(--bad);border-width:3px}
 </style>
 </head>
 <body>
 <div class="stripe"></div>
-<header><h1>ATM Network Vault Logistics</h1><p>Manage vaults, ATMs, replenishment orders and cash movements. Every action shows the SQL it runs.</p></header>
+<header><h1>ATM Network Vault Logistics</h1><p>Manage vaults, ATMs, replenishment orders and cash movements.</p></header>
 <dialog id="dlg"></dialog>
+<dialog id="dlg2"></dialog>
 <nav id="nav" aria-label="Views"></nav>
 <main><div id="msg" role="status">Welcome. Pick a view above.</div><div id="view"></div>
-<div class="sqllog"><h3 style="margin-top:0">SQL executed by this site</h3><pre id="sql" tabindex="0">-- nothing yet</pre>
-<p class="note">Demo data is kept in your browser. A production version would send these statements to a SQL server.</p>
+<div class="sqllog"><p class="note">Demo data is kept in your browser.</p>
 <button class="btn ghost" id="reset">Reset demo data</button></div></main>
 <script>
 const LOW=100000,today=()=>new Date().toISOString().slice(0,10),$=s=>document.querySelector(s);
@@ -59,7 +60,7 @@ vaults:[{VaultID:1,VaultCode:"BKK-C",VaultName:"Bangkok Central Vault",CashCapac
 staff:[{StaffID:1,Position:"Courier",PersonID:1,VaultID:1},{StaffID:2,Position:"Vault operator",PersonID:2,VaultID:1},{StaffID:3,Position:"Supervisor",PersonID:3,VaultID:2}],
 banks:[{ClientBankID:1,BankName:"Chao Phraya Bank",ClientType:"Commercial",PersonID:4},{ClientBankID:2,BankName:"Lanna Savings Bank",ClientType:"Savings",PersonID:5}],
 atms:[[1,"ATM-BKK-001","Standard",450000,"Active",1,1],[2,"ATM-BKK-002","Drive-up",60000,"Active",1,1],[3,"ATM-BKK-003","Standard",0,"Out of cash",2,1],[4,"ATM-CNX-001","Standard",320000,"Active",2,2],[5,"ATM-CNX-002","Standard",85000,"Active",1,2]].map(a=>({ATMID:a[0],ATMCode:a[1],ATMType:a[2],CurrentCashBalance:a[3],ATMStatus:a[4],ClientBankID:a[5],VaultID:a[6]})),
-orders:[{OrderID:1,OrderType:"Scheduled",OrderedAmount:300000,PriorityLevel:2,ExpectedDurationHours:4,StartDate:d,EndDate:null,Status:"Pending",ClientBankID:1,ATMID:2,VaultID:1}],
+orders:[{OrderID:1,OrderType:"Scheduled",OrderedAmount:300000,PriorityLevel:2,ExpectedDurationHours:4,StartDate:d,EndDate:null,Status:"Pending",ClientBankID:1,ATMID:2,VaultID:1,StaffID:2}],
 lines:[],movements:[{MovementID:1,MovementType:"Adjustment",Amount:0,MovementDate:d,ATMID:4,StaffID:3,VaultID:2,LineID:null}]}}
 let DB,cur="dashboard",pre={},logs=[];
 try{DB=JSON.parse(localStorage.getItem("atmdb"))}catch(e){}
@@ -70,7 +71,7 @@ const f=(a,k,v)=>a.find(x=>x[k]===v)||{};
 const nm=pid=>{const p=f(DB.persons,"PersonID",pid);return p.FirstName?p.FirstName+" "+p.LastName:"-"};
 const opts=(a,k,l,sel)=>a.map(x=>`<option value="${x[k]}"${x[k]===sel?" selected":""}>${esc(l(x))}</option>`).join("");
 const msg=(t,err)=>{const m=$("#msg");m.textContent=t;m.className=err?"err":"ok"};
-function log(s){logs.unshift(s);logs=logs.slice(0,6);$("#sql").textContent=logs.join("\n\n")}
+function log(s){}
 const tbl=(h,rows,ent,ids)=>(ent&&(h=h.concat("Actions"),rows=rows.map((r,i)=>r.concat(`<button class="btn sm" data-edit="${ent}:${ids[i]}">Edit</button> <button class="btn sm ghost" data-del="${ent}:${ids[i]}">Delete</button>`))),`<div class="scroll"><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td${typeof c==="string"&&c.startsWith("<b class=n")?' class="n"':""}>${c}</td>`).join("")}</tr>`).join("")||`<tr><td colspan="${h.length}">No rows yet.</td></tr>`}</tbody></table></div>`);
 const num=v=>`<b class=n style="font-weight:400">${fmt(v)}</b>`;
 const V={
@@ -81,37 +82,38 @@ atms(){return `<h2>ATMs</h2>${tbl(["Code","Type","Cash balance","Status","Partne
 <h3>Install a new ATM</h3><div class="form"><label>ATM code<input id="ac" placeholder="ATM-BKK-004"></label><label>Type<select id="at"><option>Standard</option><option>Drive-up</option></select></label><label>Opening cash<input id="ab" type="number" min="0" value="0"></label><label>Vault<select id="av">${opts(DB.vaults,"VaultID",v=>v.VaultCode)}</select></label><label>Partner bank<select id="abk">${opts(DB.banks,"ClientBankID",b=>b.BankName)}</select></label><button class="btn" id="addatm">Add ATM</button></div>`},
 vaults(){return `<h2>Vaults</h2>${tbl(["Code","Name","Cash balance","Capacity","Filled"],DB.vaults.map(v=>[v.VaultCode,v.VaultName,num(v.CurrentCashBalance),num(v.CashCapacity),Math.round(v.CurrentCashBalance/v.CashCapacity*100)+"%"]),"vault",DB.vaults.map(v=>v.VaultID))}
 <h3>Add a vault</h3><div class="form"><label>Code<input id="vc" placeholder="HKT-R"></label><label>Name<input id="vn" placeholder="Phuket Regional Vault"></label><label>Capacity<input id="vk" type="number" min="1" value="1000000"></label><label>Opening cash<input id="vb" type="number" min="0" value="0"></label><button class="btn" id="addvault">Add vault</button></div>
-<h3>Deposit cash into a vault</h3><div class="form"><label>Vault<select id="dv">${opts(DB.vaults,"VaultID",v=>v.VaultCode)}</select></label><label>Amount<input id="dm" type="number" min="1" value="500000"></label><label>Received by<select id="ds">${opts(DB.staff,"StaffID",s=>nm(s.PersonID))}</select></label><button class="btn" id="deposit">Deposit</button></div>`},
+<h3>Deposit cash into a vault</h3><div class="form"><label>Vault<select id="dv">${opts(DB.vaults,"VaultID",v=>v.VaultCode)}</select></label><label>Amount<input id="dm" type="number" min="1" value="500000"></label><button class="btn" id="deposit">Deposit</button></div>`},
 staff(){return `<h2>Staff</h2>${tbl(["ID","Name","Position","Vault"],DB.staff.map(s=>[s.StaffID,nm(s.PersonID),s.Position,f(DB.vaults,"VaultID",s.VaultID).VaultCode]),"staff",DB.staff.map(s=>s.StaffID))}
 <h3>Add a staff member</h3><div class="form"><label>First name<input id="sf"></label><label>Last name<input id="sl"></label><label>Position<select id="sp"><option>Courier</option><option>Vault operator</option><option>Supervisor</option><option>Technician</option></select></label><label>Vault<select id="sv">${opts(DB.vaults,"VaultID",v=>v.VaultCode)}</select></label><button class="btn" id="addstaff">Add staff</button></div>`},
 banks(){return `<h2>Partner banks</h2>${tbl(["ID","Bank","Type","Contact person","ATMs"],DB.banks.map(b=>[b.ClientBankID,esc(b.BankName),b.ClientType,nm(b.PersonID),DB.atms.filter(a=>a.ClientBankID===b.ClientBankID).length]),"bank",DB.banks.map(b=>b.ClientBankID))}
 <h3>Add a partner bank</h3><div class="form"><label>Bank name<input id="bn"></label><label>Type<select id="bt"><option>Commercial</option><option>Savings</option><option>Cooperative</option></select></label><label>Contact first name<input id="bf"></label><label>Contact last name<input id="bl"></label><button class="btn" id="addbank">Add bank</button></div>`},
 orders(){return `<h2>Replenishment orders</h2><div class="form"><label>ATM<select id="oa">${opts(DB.atms,"ATMID",a=>a.ATMCode,pre.atm)}</select></label><label>Amount<input id="oam" type="number" min="1" value="200000"></label><label>Type<select id="ot"><option>Scheduled</option><option>Emergency</option></select></label><label>Priority (1 = highest)<select id="op"><option>1</option><option selected>2</option><option>3</option></select></label><button class="btn" id="addorder">Create order</button></div>
-<h3>Orders</h3><div class="form" style="border:0;padding:0 0 .8rem;background:none"><label>Courier for delivery<select id="courier">${opts(DB.staff,"StaffID",s=>nm(s.PersonID)+" ("+s.Position+")")}</select></label></div>
-${tbl(["#","ATM","Type","Priority","Ordered","Delivered","Status","Action"],DB.orders.slice().reverse().map(o=>{const dl=DB.lines.filter(l=>l.OrderID===o.OrderID).reduce((s,l)=>s+l.DeliveredAmount,0);return[o.OrderID,f(DB.atms,"ATMID",o.ATMID).ATMCode,o.OrderType,o.PriorityLevel,num(o.OrderedAmount),num(dl),`<span class="tag">${o.Status}</span>`,o.Status==="Pending"?`<button class="btn sm" data-deliver="${o.OrderID}">Deliver</button>`:""]}),"order",DB.orders.slice().reverse().map(o=>o.OrderID))}`},
-movements(){return `<h2>Cash movements</h2><div class="form"><label>Collect from ATM<select id="ca">${opts(DB.atms,"ATMID",a=>a.ATMCode)}</select></label><label>Amount<input id="cm" type="number" min="1" value="50000"></label><label>Courier<select id="cs">${opts(DB.staff,"StaffID",s=>nm(s.PersonID))}</select></label><button class="btn" id="collect">Collect to vault</button></div>
+<h3>Orders</h3>
+${tbl(["#","ATM","Type","Priority","Ordered","Delivered","Created by","Delivered by","Status","Action"],DB.orders.slice().reverse().map(o=>{const dl=DB.lines.filter(l=>l.OrderID===o.OrderID).reduce((s,l)=>s+l.DeliveredAmount,0);return[o.OrderID,f(DB.atms,"ATMID",o.ATMID).ATMCode,o.OrderType,o.PriorityLevel,num(o.OrderedAmount),num(dl),nm(f(DB.staff,"StaffID",o.StaffID).PersonID),dby(o.OrderID),`<span class="tag">${o.Status}</span>`,o.Status==="Pending"?`<button class="btn sm" data-deliver="${o.OrderID}">Deliver</button>`:""]}),"order",DB.orders.slice().reverse().map(o=>o.OrderID))}`},
+movements(){return `<h2>Cash movements</h2><div class="form"><label>Collect from ATM<select id="ca">${opts(DB.atms,"ATMID",a=>a.ATMCode)}</select></label><label>Amount<input id="cm" type="number" min="1" value="50000"></label><button class="btn" id="collect">Collect to vault</button></div>
 <h3>Ledger</h3>${tbl(["#","Type","Amount","Date","ATM","Staff","Vault"],DB.movements.slice().reverse().map(m=>[m.MovementID,m.MovementType,num(m.Amount),m.MovementDate,f(DB.atms,"ATMID",m.ATMID).ATMCode||"-",nm(f(DB.staff,"StaffID",m.StaffID).PersonID),f(DB.vaults,"VaultID",m.VaultID).VaultCode]))}`}};
 const names={dashboard:"Dashboard",atms:"ATMs",vaults:"Vaults",staff:"Staff",banks:"Partner banks",orders:"Orders",movements:"Cash movements"};
 function render(){$("#nav").innerHTML=Object.keys(names).map(k=>`<button data-v="${k}"${k===cur?' aria-current="page"':""}>${names[k]}</button>`).join("");$("#view").innerHTML=V[cur]();pre={}}
 document.addEventListener("click",e=>{const t=e.target,d=t.dataset||{};
 if(d.v){cur=d.v;render()}
 else if(d.order){pre={atm:+d.order};cur="orders";render();msg("Set the amount and create the order.")}
-else if(d.deliver)deliver(+d.deliver);
+else if(d.deliver)ask(()=>deliver(+d.deliver));
 else if(d.edit)openEdit(d.edit);else if(d.del)openDel(d.del);
-else if(t.id==="dsave")saveEdit();else if(t.id==="dyes")doDelete();else if(t.id==="dcancel")$("#dlg").close();
-else if(t.id==="addatm")addATM();else if(t.id==="addorder")addOrder();else if(t.id==="collect")collect();
-else if(t.id==="addvault")addVault();else if(t.id==="deposit")deposit();else if(t.id==="addstaff")addStaff();else if(t.id==="addbank")addBank();
-else if(t.id==="reset"){DB=seed();save();logs=[];$("#sql").textContent="-- nothing yet";render();msg("Demo data reset.")}});
-function addATM(){const code=$("#ac").value.trim(),bal=+$("#ab").value,vid=+$("#av").value,bid=+$("#abk").value,ty=$("#at").value;
+else if(t.id==="dsave")ask(saveEdit);else if(t.id==="dyes")ask(doDelete);else if(t.id==="dcancel")$("#dlg").close();
+else if(t.id==="pconfirm")confirmPerson();else if(t.id==="pcancel")$("#dlg2").close();
+else if(t.id==="addatm")ask(addATM);else if(t.id==="addorder")ask(addOrder);else if(t.id==="collect")ask(collect);
+else if(t.id==="addvault")ask(addVault);else if(t.id==="deposit")ask(deposit);else if(t.id==="addstaff")ask(addStaff);else if(t.id==="addbank")ask(addBank);
+else if(t.id==="reset"){DB=seed();save();logs=[];actor=null;render();msg("Demo data reset.")}});
+function addATM(){if(!need())return;const code=$("#ac").value.trim(),bal=+$("#ab").value,vid=+$("#av").value,bid=+$("#abk").value,ty=$("#at").value;
 if(!code)return msg("Enter an ATM code.",1);if(DB.atms.some(a=>a.ATMCode===code))return msg("Code "+code+" already exists.",1);if(!(bal>=0))return msg("Opening cash cannot be negative.",1);
 DB.atms.push({ATMID:nid(DB.atms,"ATMID"),ATMCode:code,ATMType:ty,CurrentCashBalance:bal,ATMStatus:bal>0?"Active":"Out of cash",ClientBankID:bid,VaultID:vid});
 log(`INSERT INTO TB_ATM (ATMCode, ATMType, CurrentCashBalance, InstallDate, ATMStatus, ClientBankID, VaultID)\nVALUES ('${code}', '${ty}', ${bal}, '${today()}', '${bal>0?"Active":"Out of cash"}', ${bid}, ${vid});`);
 save();render();msg("ATM "+code+" added.")}
-function addOrder(){const a=+$("#oa").value,amt=+$("#oam").value,ty=$("#ot").value,p=+$("#op").value;if(!(amt>0))return msg("Amount must be greater than 0.",1);
-const atm=f(DB.atms,"ATMID",a);DB.orders.push({OrderID:nid(DB.orders,"OrderID"),OrderType:ty,OrderedAmount:amt,PriorityLevel:p,ExpectedDurationHours:ty==="Emergency"?2:6,StartDate:today(),EndDate:null,Status:"Pending",ClientBankID:atm.ClientBankID,ATMID:a,VaultID:atm.VaultID});
+function addOrder(){if(!need())return;const a=+$("#oa").value,amt=+$("#oam").value,ty=$("#ot").value,p=+$("#op").value;if(!(amt>0))return msg("Amount must be greater than 0.",1);
+const atm=f(DB.atms,"ATMID",a);DB.orders.push({OrderID:nid(DB.orders,"OrderID"),OrderType:ty,OrderedAmount:amt,PriorityLevel:p,ExpectedDurationHours:ty==="Emergency"?2:6,StartDate:today(),EndDate:null,Status:"Pending",ClientBankID:atm.ClientBankID,ATMID:a,VaultID:atm.VaultID,StaffID:actor});
 log(`INSERT INTO TB_Replenishment_Order (OrderType, OrderedAmount, PriorityLevel, StartDate, Status, ClientBankID, ATMID, VaultID)\nVALUES ('${ty}', ${amt}, ${p}, '${today()}', 'Pending', ${atm.ClientBankID}, ${a}, ${atm.VaultID});`);
 save();render();msg("Order created for "+atm.ATMCode+".")}
-function deliver(id){const o=f(DB.orders,"OrderID",id),sid=+$("#courier").value,v=f(DB.vaults,"VaultID",o.VaultID),a=f(DB.atms,"ATMID",o.ATMID),amt=o.OrderedAmount;
+function deliver(id){if(!need())return;const o=f(DB.orders,"OrderID",id),sid=actor,v=f(DB.vaults,"VaultID",o.VaultID),a=f(DB.atms,"ATMID",o.ATMID),amt=o.OrderedAmount;
 if(v.CurrentCashBalance<amt)return msg(`Blocked: vault ${v.VaultCode} holds ${fmt(v.CurrentCashBalance)} but the order needs ${fmt(amt)}.`,1);
 v.CurrentCashBalance-=amt;a.CurrentCashBalance+=amt;a.ATMStatus="Active";o.Status="Completed";o.EndDate=today();
 const lid=nid(DB.lines,"LineID"),mid=nid(DB.movements,"MovementID");
@@ -119,7 +121,7 @@ DB.lines.push({LineID:lid,PlannedDate:o.StartDate,PlannedAmount:amt,DeliveredAmo
 DB.movements.push({MovementID:mid,MovementType:"Replenishment",Amount:amt,MovementDate:today(),ATMID:a.ATMID,StaffID:sid,VaultID:v.VaultID,LineID:lid});
 log(`BEGIN;\nUPDATE TB_Vault SET CurrentCashBalance = CurrentCashBalance - ${amt} WHERE VaultID = ${v.VaultID};\nUPDATE TB_ATM SET CurrentCashBalance = CurrentCashBalance + ${amt}, ATMStatus = 'Active' WHERE ATMID = ${a.ATMID};\nINSERT INTO TB_Replenishment_Line (PlannedDate, PlannedAmount, DeliveredAmount, ShortfallAmount, DeliveredDate, OrderID)\nVALUES ('${o.StartDate}', ${amt}, ${amt}, 0, '${today()}', ${id});\nINSERT INTO TB_Cash_Movement (MovementType, Amount, MovementDate, ATMID, StaffID, VaultID, LineID)\nVALUES ('Replenishment', ${amt}, '${today()}', ${a.ATMID}, ${sid}, ${v.VaultID}, ${lid});\nUPDATE TB_Replenishment_Order SET Status = 'Completed', EndDate = '${today()}' WHERE OrderID = ${id};\nCOMMIT;`);
 save();render();msg(`Delivered ${fmt(amt)} to ${a.ATMCode}. Vault and ATM balances updated.`)}
-function collect(){const a=f(DB.atms,"ATMID",+$("#ca").value),amt=+$("#cm").value,sid=+$("#cs").value,v=f(DB.vaults,"VaultID",a.VaultID);
+function collect(){if(!need())return;const a=f(DB.atms,"ATMID",+$("#ca").value),amt=+$("#cm").value,sid=actor,v=f(DB.vaults,"VaultID",a.VaultID);
 if(!(amt>0))return msg("Amount must be greater than 0.",1);
 if(a.CurrentCashBalance<amt)return msg(`Blocked: ${a.ATMCode} holds only ${fmt(a.CurrentCashBalance)}. Balances cannot go negative.`,1);
 if(v.CurrentCashBalance+amt>v.CashCapacity)return msg(`Blocked: vault ${v.VaultCode} would exceed its capacity.`,1);
@@ -127,21 +129,21 @@ a.CurrentCashBalance-=amt;v.CurrentCashBalance+=amt;if(a.CurrentCashBalance===0)
 const mid=nid(DB.movements,"MovementID");DB.movements.push({MovementID:mid,MovementType:"Collection",Amount:amt,MovementDate:today(),ATMID:a.ATMID,StaffID:sid,VaultID:v.VaultID,LineID:null});
 log(`BEGIN;\nUPDATE TB_ATM SET CurrentCashBalance = CurrentCashBalance - ${amt} WHERE ATMID = ${a.ATMID}; -- CHECK (CurrentCashBalance >= 0)\nUPDATE TB_Vault SET CurrentCashBalance = CurrentCashBalance + ${amt} WHERE VaultID = ${v.VaultID};\nINSERT INTO TB_Cash_Movement (MovementType, Amount, MovementDate, ATMID, StaffID, VaultID)\nVALUES ('Collection', ${amt}, '${today()}', ${a.ATMID}, ${sid}, ${v.VaultID});\nCOMMIT;`);
 save();render();msg(`Collected ${fmt(amt)} from ${a.ATMCode} into vault ${v.VaultCode}.`)}
-function addVault(){const c=$("#vc").value.trim(),n=$("#vn").value.trim(),cap=+$("#vk").value,bal=+$("#vb").value;
+function addVault(){if(!need())return;const c=$("#vc").value.trim(),n=$("#vn").value.trim(),cap=+$("#vk").value,bal=+$("#vb").value;
 if(!c||!n)return msg("Enter a vault code and name.",1);if(DB.vaults.some(v=>v.VaultCode===c))return msg("Vault code "+c+" already exists.",1);
 if(!(cap>0))return msg("Capacity must be greater than 0.",1);if(!(bal>=0)||bal>cap)return msg("Opening cash must be between 0 and the capacity.",1);
 DB.vaults.push({VaultID:nid(DB.vaults,"VaultID"),VaultCode:c,VaultName:n,CashCapacity:cap,CurrentCashBalance:bal});
 log(`INSERT INTO TB_Vault (VaultName, VaultCode, CashCapacity, CurrentCashBalance)\nVALUES ('${n}', '${c}', ${cap}, ${bal});`);save();render();msg("Vault "+c+" added.")}
-function deposit(){const v=f(DB.vaults,"VaultID",+$("#dv").value),amt=+$("#dm").value,sid=+$("#ds").value;
+function deposit(){if(!need())return;const v=f(DB.vaults,"VaultID",+$("#dv").value),amt=+$("#dm").value,sid=actor;
 if(!(amt>0))return msg("Amount must be greater than 0.",1);if(v.CurrentCashBalance+amt>v.CashCapacity)return msg(`Blocked: vault ${v.VaultCode} would exceed its capacity of ${fmt(v.CashCapacity)}.`,1);
 v.CurrentCashBalance+=amt;DB.movements.push({MovementID:nid(DB.movements,"MovementID"),MovementType:"Vault deposit",Amount:amt,MovementDate:today(),ATMID:null,StaffID:sid,VaultID:v.VaultID,LineID:null});
 log(`BEGIN;\nUPDATE TB_Vault SET CurrentCashBalance = CurrentCashBalance + ${amt} WHERE VaultID = ${v.VaultID};\nINSERT INTO TB_Cash_Movement (MovementType, Amount, MovementDate, StaffID, VaultID)\nVALUES ('Vault deposit', ${amt}, '${today()}', ${sid}, ${v.VaultID});\nCOMMIT;`);save();render();msg(`Deposited ${fmt(amt)} into vault ${v.VaultCode}.`)}
 function addPerson(fn,ln){const id=nid(DB.persons,"PersonID");DB.persons.push({PersonID:id,FirstName:fn,LastName:ln});return id}
-function addStaff(){const fn=$("#sf").value.trim(),ln=$("#sl").value.trim(),pos=$("#sp").value,vid=+$("#sv").value;
+function addStaff(){if(!need())return;const fn=$("#sf").value.trim(),ln=$("#sl").value.trim(),pos=$("#sp").value,vid=+$("#sv").value;
 if(!fn||!ln)return msg("Enter a first and last name.",1);const pid=addPerson(fn,ln);
 DB.staff.push({StaffID:nid(DB.staff,"StaffID"),Position:pos,PersonID:pid,VaultID:vid});
 log(`BEGIN;\nINSERT INTO TB_Person (FirstName, LastName) VALUES ('${fn}', '${ln}');\nINSERT INTO TB_Staff (Position, PersonID, VaultID) VALUES ('${pos}', ${pid}, ${vid});\nCOMMIT;`);save();render();msg(`${fn} ${ln} added as ${pos}.`)}
-function addBank(){const n=$("#bn").value.trim(),ty=$("#bt").value,fn=$("#bf").value.trim(),ln=$("#bl").value.trim();
+function addBank(){if(!need())return;const n=$("#bn").value.trim(),ty=$("#bt").value,fn=$("#bf").value.trim(),ln=$("#bl").value.trim();
 if(!n||!fn||!ln)return msg("Enter the bank name and a contact first and last name.",1);if(DB.banks.some(b=>b.BankName===n))return msg(n+" already exists.",1);
 const pid=addPerson(fn,ln);DB.banks.push({ClientBankID:nid(DB.banks,"ClientBankID"),BankName:n,ClientType:ty,PersonID:pid});
 log(`BEGIN;\nINSERT INTO TB_Person (FirstName, LastName) VALUES ('${fn}', '${ln}');\nINSERT INTO TB_Client_Bank (BankName, ClientType, PersonID) VALUES ('${n}', '${ty}', ${pid});\nCOMMIT;`);save();render();msg(n+" added as a partner bank.")}
@@ -184,6 +186,18 @@ function doDelete(){const E=ENT[pend.e],row=f(DB[E.arr],E.key,pend.id);
 DB[E.arr]=DB[E.arr].filter(x=>x[E.key]!==pend.id);let sql=`DELETE FROM ${E.table} WHERE ${E.key} = ${pend.id};`,two=false;
 if((pend.e==="staff"||pend.e==="bank")&&row.PersonID&&!DB.staff.some(x=>x.PersonID===row.PersonID)&&!DB.banks.some(x=>x.PersonID===row.PersonID)){DB.persons=DB.persons.filter(p=>p.PersonID!==row.PersonID);sql+=`\nDELETE FROM TB_Person WHERE PersonID = ${row.PersonID};`;two=true}
 log(two?"BEGIN;\n"+sql+"\nCOMMIT;":sql);$("#dlg").close();save();render();msg(pend.label+" deleted.")}
+function dby(oid){const l=DB.lines.find(x=>x.OrderID===oid),m=l&&DB.movements.find(x=>x.LineID===l.LineID);return m?nm(f(DB.staff,"StaffID",m.StaffID).PersonID):"-"}
+let actor=null,last=null,pfn=null;
+function need(){return !!actor}
+function ask(fn){pfn=fn;const L=DB.staff.map(x=>`<option value="${x.StaffID}"${x.StaffID===last?" selected":""}>${esc(nm(x.PersonID))} (${x.Position}, ${f(DB.vaults,"VaultID",x.VaultID).VaultCode||"-"})</option>`).join("");
+$("#dlg2").innerHTML=`<h3 style="margin-top:0">Who is performing this action?</h3><div class="fields"><label>Person<select id="psel"><option value="">Select a person…</option>${L}<option value="new">+ Person not listed, add them</option></select></label><div id="pnew" class="fields" style="display:none"><label>First name<input id="np_f"></label><label>Last name<input id="np_l"></label><label>Position<select id="np_p"><option>Courier</option><option>Vault operator</option><option>Supervisor</option><option>Technician</option></select></label><label>Vault<select id="np_v">${opts(DB.vaults,"VaultID",v=>v.VaultCode)}</select></label></div></div><p id="perr" class="low" role="alert"></p><button class="btn" id="pconfirm">Confirm and run</button> <button class="btn ghost" id="pcancel">Cancel</button>`;$("#dlg2").showModal()}
+document.addEventListener("change",e=>{if(e.target.id==="psel")$("#pnew").style.display=e.target.value==="new"?"grid":"none"});
+function confirmPerson(){const v=$("#psel").value,er=t=>{$("#perr").textContent=t};
+if(!v)return er("Select a person, or choose \u201cPerson not listed\u201d to add one.");
+if(v==="new"){const fn=$("#np_f").value.trim(),ln=$("#np_l").value.trim(),pos=$("#np_p").value,vid=+$("#np_v").value;
+if(!fn||!ln)return er("Enter a first and last name.");if(!vid)return er("Add a vault first.");
+const pid=addPerson(fn,ln),sid=nid(DB.staff,"StaffID");DB.staff.push({StaffID:sid,Position:pos,PersonID:pid,VaultID:vid});actor=sid}else actor=+v;
+last=actor;$("#dlg2").close();const run=pfn;pfn=null;run();actor=null}
 render();
 </script>
 </body>
